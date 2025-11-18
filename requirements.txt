@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+torch
+tokenizers
+pydantic
+python-multipart
+numpy
