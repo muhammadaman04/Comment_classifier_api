@@ -82,48 +82,41 @@ async def health_check():
     }
 
 
-def build_explanation(predictions, is_toxic: bool) -> str:
+def build_explanation(predictions, is_toxic: bool, detail_threshold: float = 0.50) -> str:
     """
-    Build a human-readable explanation using top-2 labels.
+    Human-readable explanation mentioning all categories above threshold.
+    Numbers are omitted.
     """
-    if not is_toxic:
-        return "This comment is predicted to be non-toxic."
+    # Extract labels above threshold
+    strong_labels = [p.label.replace("_", " ") for p in predictions if p.probability >= detail_threshold]
 
-    # Filter positive labels
-    positive_preds = [p for p in predictions if p.is_positive]
+    if not strong_labels:
+        return "The comment appears non-toxic. No significant toxic categories detected."
 
-    # If no positive labels (should not happen when is_toxic=True, but safe)
-    if len(positive_preds) == 0:
-        return "This comment shows low probability for all toxic categories."
+    # Toxic comment
+    if is_toxic:
+        if len(strong_labels) == 1:
+            return f"This comment is predicted to be '{strong_labels[0]}'."
+        else:
+            # Join all except last with commas, last with 'and'
+            sentence = ", ".join(strong_labels[:-1]) + " and " + strong_labels[-1]
+            return f"This comment is predicted to exhibit multiple toxic behaviors including {sentence}."
 
-    # Sort by probability (descending)
-    positive_preds_sorted = sorted(
-        positive_preds,
-        key=lambda p: p.probability,
-        reverse=True
-    )
+    # Non-toxic but mild signals
+    if len(strong_labels) == 1:
+        return f"The comment is mostly non-toxic, but it shows mild signal of '{strong_labels[0]}'."
+    else:
+        sentence = ", ".join(strong_labels[:-1]) + " and " + strong_labels[-1]
+        return f"The comment is mostly non-toxic, but it shows mild signals of {sentence}."
 
-    # If only one label is positive
-    if len(positive_preds_sorted) == 1:
-        label = positive_preds_sorted[0].label
-        return f"This comment is predicted to be mainly '{label}'."
-
-    # Else use top 2 labels
-    top1 = positive_preds_sorted[0]
-    top2 = positive_preds_sorted[1]
-    return (
-        f"This comment is predicted to be primarily '{top1.label}' "
-        f"and '{top2.label}'."
-    )
 
 
 @app.post("/predict", response_model=CommentResponse)
 async def predict_toxicity(request: CommentRequest):
     """
     Classify a single comment for toxicity.
-    Uses a fixed threshold = 0.4
     """
-    FIXED_THRESHOLD = 0.4
+    FIXED_THRESHOLD = 0.5
 
     if model is None or tokenizer is None:
         raise HTTPException(status_code=503, detail="Model not loaded")

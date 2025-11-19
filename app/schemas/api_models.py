@@ -11,7 +11,6 @@ class PredictionResult(BaseModel):
     is_positive: bool
 
 class CommentResponse(BaseModel):
-    original_comment: str
     predictions: List[PredictionResult]
     is_toxic: bool
     threshold_used: float
