@@ -11,9 +11,9 @@ class PredictionResult(BaseModel):
     is_positive: bool
 
 class CommentResponse(BaseModel):
+    comment: str
     predictions: List[PredictionResult]
     is_toxic: bool
-    threshold_used: float
     explanation: str   # 🔹 Added text explanation field
 
 class HealthResponse(BaseModel):
