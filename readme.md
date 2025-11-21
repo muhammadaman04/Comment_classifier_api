@@ -1,6 +1,3 @@
-Below is a clean, professional, **step-by-step README.md** that explains exactly how to run both the **FastAPI backend** and the **Streamlit frontend**, including folder structure, installation, commands, and testing instructions.
-
----
 
 # 🚀 Toxic Comment Classification — FastAPI + Streamlit
 
