@@ -2,12 +2,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import torch
-import numpy as np
 from pathlib import Path
-from tokenizers import ByteLevelBPETokenizer
-import torch
-# from app.core.config import DEVICE, LABEL_COLS
+import json
 from typing import List
+import asyncio
+
+# Import your schemas
 from app.schemas.api_models import (
     CommentRequest,
     CommentResponse,
@@ -16,6 +16,9 @@ from app.schemas.api_models import (
     BatchRequest,
 )
 from app.utils.text_cleaning import clean_text
+
+# IMPORT MONITORING ROUTES
+from app.monitoring.routes import router as monitoring_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -33,67 +36,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# INCLUDE MONITORING ROUTES
+app.include_router(monitoring_router)
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LABEL_COLS = ['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']
 
 # Define label-wise thresholds based on evaluation metrics
 LABEL_THRESHOLDS = {
-    'toxic': 0.5,
-    'severe_toxic': 0.6,
-    'obscene': 0.6,
-    'threat': 0.6,
-    'insult': 0.5,
-    'identity_hate': 0.6
+    'toxic': 0.5,        
+    'severe_toxic': 0.4, 
+    'obscene': 0.6,      
+    'threat': 0.4,       
+    'insult': 0.5,     
+    'identity_hate': 0.4 
 }
+
+# Global variables
+model = None
+vocab = None
+pad_idx = 0
+
+# Import monitoring function
+from app.monitoring.monitoring import track_prediction_for_monitoring
+
+# Text preprocessing functions
+def tokenize(text):
+    return text.split()
+
+def numericalize(text, vocab):
+    return [vocab.get(word, vocab["<UNK>"]) for word in tokenize(text)]
 
 @app.on_event("startup")
 async def load_model():
-    """Load the model and tokenizer on startup"""
-    global model, tokenizer, pad_idx
+    """Load the model and vocabulary on startup"""
+    global model, vocab, pad_idx
     
     try:
         # Define model paths
-        model_path = Path("models/gru_model.pt")
-        tokenizer_vocab_path = Path("models/bpe_tokenizer-vocab.json")
-        tokenizer_merges_path = Path("models/bpe_tokenizer-merges.txt")
+        model_path = Path("models/gru_model_pe.pt")
+        vocab_path = Path("models/vocab.json")
         
         # Check if files exist
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")
-        if not tokenizer_vocab_path.exists():
-            raise FileNotFoundError(f"Tokenizer vocab file not found: {tokenizer_vocab_path}")
-        if not tokenizer_merges_path.exists():
-            raise FileNotFoundError(f"Tokenizer merges file not found: {tokenizer_merges_path}")
+        if not vocab_path.exists():
+            raise FileNotFoundError(f"Vocabulary file not found: {vocab_path}")
         
-        # Load tokenizer
-        tokenizer = ByteLevelBPETokenizer(
-            str(tokenizer_vocab_path),
-            str(tokenizer_merges_path)
-        )
-        pad_idx = tokenizer.token_to_id("<PAD>")
-        vocab_size = tokenizer.get_vocab_size()
+        # Load vocabulary from JSON
+        with open(vocab_path, 'r') as f:
+            vocab = json.load(f)
+        
+        pad_idx = vocab.get("<PAD>", 0)
         
         # Load the scripted model directly
         model = torch.jit.load(str(model_path), map_location=DEVICE)
         model.eval()
         
         print(f"✓ Model loaded successfully on {DEVICE}")
-        print(f"✓ Vocabulary size: {vocab_size}")
+        print(f"✓ Vocabulary size: {len(vocab)}")
         
     except Exception as e:
         print(f"✗ Error loading model: {str(e)}")
         raise
-
 
 @app.get("/", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "model_loaded": model is not None and tokenizer is not None,
+        "model_loaded": model is not None and vocab is not None,
         "device": str(DEVICE),
     }
-
 
 def build_explanation(predictions: List[PredictionResult], is_toxic: bool) -> str:
     """Build sentence explanation using labels above threshold."""
@@ -108,19 +122,23 @@ def build_explanation(predictions: List[PredictionResult], is_toxic: bool) -> st
         sentence = ", ".join(strong_labels[:-1]) + " and " + strong_labels[-1]
         return f"This comment is predicted to exhibit multiple toxic behaviors including {sentence}."
 
-
-
 @app.post("/predict", response_model=CommentResponse)
 async def predict_toxicity(request: CommentRequest):
-    if model is None or tokenizer is None:
+    if model is None or vocab is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     cleaned_comment = clean_text(request.comment)
     if not cleaned_comment:
         raise HTTPException(status_code=400, detail="Comment is empty after cleaning")
 
-    encoded = tokenizer.encode(cleaned_comment)
-    input_tensor = torch.tensor(encoded.ids).unsqueeze(0).to(DEVICE)
+    # Track for monitoring (non-blocking)
+    asyncio.create_task(track_prediction_for_monitoring(request.comment, vocab))
+    
+    tokens = numericalize(cleaned_comment, vocab)
+    if not tokens:
+        raise HTTPException(status_code=400, detail="No valid tokens after processing")
+
+    input_tensor = torch.tensor(tokens).unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():
         logits = model(input_tensor)
@@ -143,7 +161,7 @@ async def predict_toxicity(request: CommentRequest):
     explanation = build_explanation(predictions, is_toxic)
 
     return CommentResponse(
-        comment = request.comment,
+        comment=request.comment,
         predictions=predictions,
         is_toxic=is_toxic,
         explanation=explanation
@@ -151,7 +169,7 @@ async def predict_toxicity(request: CommentRequest):
 
 @app.post("/predict/batch")
 async def predict_batch(request: BatchRequest):
-    if model is None or tokenizer is None:
+    if model is None or vocab is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     results = []
@@ -165,8 +183,18 @@ async def predict_batch(request: BatchRequest):
             })
             continue
 
-        encoded = tokenizer.encode(cleaned_comment)
-        input_tensor = torch.tensor(encoded.ids).unsqueeze(0).to(DEVICE)
+        # Track for monitoring
+        asyncio.create_task(track_prediction_for_monitoring(comment, vocab))
+        
+        tokens = numericalize(cleaned_comment, vocab)
+        if not tokens:
+            results.append({
+                "original_comment": comment,
+                "error": "No valid tokens after processing"
+            })
+            continue
+
+        input_tensor = torch.tensor(tokens).unsqueeze(0).to(DEVICE)
 
         with torch.no_grad():
             logits = model(input_tensor)
@@ -203,18 +231,26 @@ async def predict_batch(request: BatchRequest):
 
 @app.get("/model/info")
 async def model_info():
-    if model is None or tokenizer is None:
+    if model is None or vocab is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
+    # Import here to avoid circular imports
+    from app.monitoring.monitoring import vocab_monitor
+    
+    monitoring_stats = vocab_monitor.get_stats()
+    
     return {
-        "model_type": "GRU (TorchScript)",
-        "vocabulary_size": tokenizer.get_vocab_size(),
+        "model_type": "GRU with Pretrained Embeddings",
+        "vocabulary_size": len(vocab),
         "labels": LABEL_COLS,
         "device": str(DEVICE),
-        "embedding_dim": 128,
-        "hidden_dim": 128,
-        "num_layers": 1,
-        "bidirectional": False,
+        "embedding_dim": 300,
+        "monitoring": {
+            "total_predictions": monitoring_stats["daily_stats"]["total_predictions"],
+            "new_word_ratio": monitoring_stats["daily_stats"]["new_word_ratio"],
+            "unknown_words_count": monitoring_stats["daily_stats"]["unknown_vocabulary_size"],
+            "status": monitoring_stats["alert_status"]
+        }
     }
 
 # --------------------- RUN ---------------------
