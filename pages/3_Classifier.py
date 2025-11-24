@@ -4,7 +4,8 @@ import requests
 # -----------------------------
 # CONFIG
 # -----------------------------
-API_URL = "http://127.0.0.1:8000/predict"   # change when deployed
+# API_URL = "http://127.0.0.1:8000/predict"   # change when deployed
+API_URL = "http://10.108.72.196:8000/predict"
 
 st.set_page_config(page_title="Toxic Comment Classifier", page_icon="🤖", layout="centered")
 
@@ -61,3 +62,4 @@ if st.button("Analyze"):
 
 st.write("---")
 st.caption("Built with Streamlit + FastAPI 🚀")
+

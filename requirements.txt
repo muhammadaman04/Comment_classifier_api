@@ -5,3 +5,5 @@ tokenizers
 pydantic
 python-multipart
 numpy
+streamlit
+requests
