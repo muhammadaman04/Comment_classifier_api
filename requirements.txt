@@ -5,3 +5,8 @@ tokenizers
 pydantic
 python-multipart
 numpy
+streamlit
+requests
+pandas
+matplotlib
+seaborn

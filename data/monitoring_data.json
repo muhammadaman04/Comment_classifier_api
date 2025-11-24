@@ -1,0 +1,55 @@
+{
+  "new_words_counter": {
+    "genz": 1,
+    "brainrot": 1,
+    "tralala": 2,
+    "lero": 1,
+    "sahab": 2,
+    "nawab": 1,
+    "ngl": 3
+  },
+  "daily_stats": {
+    "2025-11-24": {
+      "total_predictions": 5,
+      "new_word_count": 11,
+      "timestamp": "2025-11-24T23:40:28.491554"
+    },
+    "2025-11-23": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197360"
+    },
+    "2025-11-22": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197392"
+    },
+    "2025-11-21": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197411"
+    },
+    "2025-11-20": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197429"
+    },
+    "2025-11-19": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197450"
+    },
+    "2025-11-18": {
+      "total_predictions": 0,
+      "new_word_count": 0,
+      "timestamp": "2025-11-24T23:21:40.197470"
+    }
+  },
+  "alerts": [],
+  "last_updated": "2025-11-24T23:40:28.491606",
+  "metadata": {
+    "total_unique_new_words": 7,
+    "total_alerts": 0,
+    "data_file_version": "1.0"
+  }
+}

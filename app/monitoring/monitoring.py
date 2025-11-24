@@ -144,11 +144,11 @@ class EfficientVocabMonitor:
             self.save_data()  # Save when new alert is created
     
     def get_top_new_words(self, limit: int = 20) -> List[Dict]:
-        """Get top new words efficiently using heap"""
-        sorted_words = sorted(self.top_words_heap, reverse=True)
+        """Get top new words efficiently using counter (ensures no duplicates)"""
+        # Use counter directly to avoid heap sync issues and duplicates
         return [
             {"word": word, "frequency": count}
-            for count, word in sorted_words[:limit]
+            for word, count in self.new_words_counter.most_common(limit)
         ]
     
     def get_stats(self) -> Dict:
