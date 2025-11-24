@@ -9,3 +9,4 @@ __pycache__/
 .vscode/
 .idea/
 app_data.json
+data/monitoring_data.json
